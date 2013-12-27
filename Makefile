@@ -98,15 +98,19 @@ MOZILLA_CFLAGS = -I$(SRC_PATH)/npapi
 
 npwrapper_LIBRARY = npwrapper.so
 npwrapper_RAWSRCS = npw-wrapper.c npw-common.c npw-malloc.c npw-rpc.c rpc.c debug.c utils.c npruntime.c
+npwrapper_RAWSRCS += npw-use-tcp-sockets.c npw-remote-agent-info.c
 npwrapper_SOURCES = $(npwrapper_RAWSRCS:%.c=$(SRC_PATH)/src/%.c)
 npwrapper_OBJECTS = $(npwrapper_RAWSRCS:%.c=npwrapper-%.os)
 npwrapper_CFLAGS  = $(CFLAGS) $(X_CFLAGS) $(MOZILLA_CFLAGS) $(GLIB_CFLAGS)
+npwrapper_CFLAGS += $(CURL_CFLAGS)
 npwrapper_LDFLAGS = $(LDFLAGS) $(libpthread_LDFLAGS)
+npwrapper_LDFLAGS += $(CURL_LDFLAGS)
 npwrapper_LIBS    = $(X_LIBS) $(libpthread_LIBS) $(libsocket_LIBS)
 npwrapper_LIBS   += $(GLIB_LIBS)
-
+npwrapper_LIBS   += $(CURL_LIBS)
 npviewer_PROGRAM  = npviewer.bin
 npviewer_RAWSRCS  = npw-viewer.c npw-common.c npw-malloc.c npw-rpc.c rpc.c debug.c utils.c npruntime.c
+npviewer_RAWSRCS += npw-use-tcp-sockets.c
 npviewer_SOURCES  = $(npviewer_RAWSRCS:%.c=$(SRC_PATH)/src/%.c)
 npviewer_OBJECTS  = $(npviewer_RAWSRCS:%.c=npviewer-%.o)
 npviewer_CFLAGS   = $(CFLAGS_32)
@@ -136,6 +140,7 @@ endif
 
 npplayer_PROGRAM  = npplayer
 npplayer_SOURCES  = npw-player.c debug.c rpc.c utils.c glibcurl.c gtk2xtbin.c $(tidy_SOURCES)
+npplayer_SOURCES += npw-use-tcp-sockets.c
 npplayer_OBJECTS  = $(npplayer_SOURCES:%.c=npplayer-%.o)
 npplayer_CFLAGS   = $(CFLAGS)
 npplayer_CFLAGS  += $(GTK_CFLAGS) $(GLIB_CFLAGS) $(MOZILLA_CFLAGS) $(CURL_CFLAGS) $(X_CFLAGS)
@@ -173,6 +178,7 @@ nploader_RAWSRCS = npw-viewer.sh
 nploader_SOURCES = $(nploader_RAWSRCS:%.sh=$(SRC_PATH)/src/%.sh)
 
 test_rpc_RAWSRCS		 = test-rpc-common.c debug.c rpc.c
+test_rpc_RAWSRCS		 = test-rpc-common.c debug.c rpc.c npw-use-tcp-sockets.c
 test_rpc_client_OBJECTS	 = $(test_rpc_RAWSRCS:%.c=%-client.o)
 test_rpc_server_OBJECTS	 = $(test_rpc_RAWSRCS:%.c=%-server.o)
 test_rpc_client_CPPFLAGS = $(CPPFLAGS) -I$(SRC_PATH)/src -DBUILD_CLIENT -DNPW_COMPONENT_NAME="\"Client\""

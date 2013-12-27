@@ -47,6 +47,7 @@
 #include "xembed.h"
 #include "npw-common.h"
 #include "npw-malloc.h"
+#include "npw-use-tcp-sockets.h"
 
 #define DEBUG 1
 #include "debug.h"
@@ -690,11 +691,21 @@ static void xt_client_event_handler(Widget w, XtPointer client_data, XEvent *eve
 // Reconstruct window attributes
 static int create_window_attributes(NPSetWindowCallbackStruct *ws_info)
 {
+  D(bug("create_window_attributes %p\n", ws_info));
+
   if (ws_info == NULL)
 	return -1;
   GdkVisual *gdk_visual;
-  if (ws_info->visual)
+
+  D(bug("create_window_attributes %p\n", ws_info->visual));
+
+  if (ws_info->visual) {
 	gdk_visual = gdkx_visual_get((uintptr_t)ws_info->visual);
+	if (gdk_visual == NULL) {
+	  npw_printf("create_window_attributes from ws_info->visual, trying get_system\n");
+	  gdk_visual = gdk_visual_get_system();
+	}
+  }
   else
 	gdk_visual = gdk_visual_get_system();
   if (gdk_visual == NULL) {
@@ -745,6 +756,7 @@ static void fixup_size_hints(PluginInstance *plugin)
 // Create a new window from NPWindow
 static int create_window(PluginInstance *plugin, NPWindow *window)
 {
+  D(bug("create_window %p\n", window->window));
   // XXX destroy previous window here?
   if (plugin->is_windowless) {
 	destroy_window_attributes(plugin->window.ws_info);
@@ -756,6 +768,7 @@ static int create_window(PluginInstance *plugin, NPWindow *window)
   NPSetWindowCallbackStruct *ws_info;
   if ((ws_info = NPW_MemClone(NPSetWindowCallbackStruct, window->ws_info)) == NULL)
 	return -1;
+
   if (create_window_attributes(ws_info) < 0)
 	return -1;
   memcpy(&plugin->window, window, sizeof(*window));
@@ -766,9 +779,139 @@ static int create_window(PluginInstance *plugin, NPWindow *window)
   // that's all for windowless plugins
   if (plugin->is_windowless)
 	return 0;
+  
 
   // create the new window
   if (plugin->use_xembed) {
+    if (use_remote_invocation())
+      {
+	D(bug("create_window in use_xembed use_remote_invocation\n"));
+	/*	void *container, *socket;
+	printf("The window id of the parent is: %p\n", window->window);
+	printf("Enter separated by space the windowid of the container and the windowid of the socket:");
+	scanf("%p %p", &container, &socket);
+	printf("The ids passed were %p and %p\n", container, socket);
+	window->window = socket;
+	*/
+	/*
+	GtkData *toolkit = calloc(1, sizeof(*toolkit));
+	if (toolkit == NULL)
+	  return -1;
+	toolkit->container = gtk_window_new (GTK_WINDOW_POPUP);
+	toolkit->socket = gtk_socket_new();
+	gtk_container_add (GTK_CONTAINER (toolkit->container), toolkit->socket);
+	gtk_widget_set_size_request (toolkit->socket, window->width, window->height);
+	gtk_widget_show (toolkit->socket);
+	gtk_widget_realize (toolkit->container);
+	GdkWindow* window_container = gdk_window_foreign_new((Window)window->window);
+	if (GTK_WIDGET_MAPPED(toolkit->container))
+	  gtk_widget_unmap(toolkit->container);
+	    
+	gdk_window_reparent(toolkit->container->window, window_container, 0, 0);
+	gtk_widget_show (toolkit->container);
+	
+	window->window = (void *)gtk_socket_get_id(GTK_SOCKET(toolkit->socket));
+	plugin->toolkit_data = toolkit;
+#if USE_XEMBED_HACK
+	// don't let the browser kill our window out of NPP_Destroy() scope
+	g_signal_connect(toolkit->container, "delete-event",
+			 G_CALLBACK(gtk_true), NULL);
+#endif
+	// make sure we don't try to destroy the widget again in destroy_window()
+	g_signal_connect(toolkit->container, "destroy",
+			 G_CALLBACK(gtk_widget_destroyed), &toolkit->container);
+	// keep the socket as the plugin tries to destroy the widget itself
+	g_signal_connect(toolkit->socket, "plug_removed",
+			 G_CALLBACK(gtk_true), NULL);
+
+	window->window = (void *)gtk_socket_get_id(GTK_SOCKET(toolkit->socket));
+	plugin->toolkit_data = toolkit;
+	
+	return(0);
+	*/
+	GtkData *toolkit = calloc(1, sizeof(*toolkit));
+	if (toolkit == NULL)
+	  return -1;
+	D(bug("create_window Before creationg toolkit->container\n"));
+	//toolkit->container = gtk_window_new (GTK_WINDOW_TOPLEVEL);
+	toolkit->container = gtk_window_new (GTK_WINDOW_POPUP);
+	// gdk_window_set_override_redirect(toolkit->container->window, TRUE);
+	if (toolkit->container == NULL)
+	  return -1;
+	D(bug("create_window Before realizing toolkit->container\n"));
+	//D(bug("can focus container: %d\n", gtk_widget_get_can_focus(toolkit->container)));
+	//gtk_widget_set_can_focus(toolkit->container, TRUE);
+	//D(bug("can focus container: %d\n", gtk_widget_get_can_focus(toolkit->container)));
+	//D(bug("event mask container: 0x%x\n", gtk_widget_get_events(toolkit->container)));
+	//gtk_widget_add_events(toolkit->container, GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+	//D(bug("event mask container after adding : 0x%x\n", gtk_widget_get_events(toolkit->container)));
+	//gtk_widget_set_events(toolkit->container, GDK_POINTER_MOTION_MASK | GDK_POINTER_MOTION_HINT_MASK | GDK_BUTTON_MOTION_MASK |  GDK_BUTTON1_MOTION_MASK | GDK_BUTTON2_MOTION_MASK | GDK_BUTTON3_MOTION_MASK | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK);
+	//	D(bug("event mask container: %d\n", gtk_widget_get_events(toolkit->container)));
+	gtk_widget_realize(toolkit->container);
+	D(bug("create_window Before set size_request toolkit->container\n"));
+ 	gtk_widget_set_size_request(toolkit->container, window->width, window->height);
+	D(bug("create_window Before gdk_window_foreign_new window %p\n", window->window));
+	GdkWindow *parent = gdk_window_foreign_new((Window)window->window);
+	//	D(bug("create_window Before set showing parent window \n"));
+	//gtk_widget_show(parent);
+	//D(bug("event mask parent: %d\n", gtk_widget_get_events(parent)));
+	//gtk_widget_set_events(parent, 0x0fffff);
+	//D(bug("event mask parent: %d\n", gtk_widget_get_events(parent)));
+	D(bug("create_window Before reparent toolkit->container %p->%p\n", (void *)GDK_WINDOW_XID(toolkit->container->window), (void *)window->window));
+	gdk_window_reparent(toolkit->container->window, parent, 0, 0);
+	D(bug("create_window Before show toolkit->container\n"));
+	gtk_widget_show(toolkit->container);
+	D(bug("create_window container is: %p\n", (void *)GDK_WINDOW_XID(toolkit->container->window)));
+
+	// Test
+	//	D(bug("create_window Create button\n"));
+	//GtkWidget *button;
+	//button = gtk_button_new_with_label ("Hello World");
+	//gtk_container_add (GTK_CONTAINER(toolkit->container), button);
+	//gtk_widget_show(button);
+	//gtk_widget_set_sensitive(toolkit->container, TRUE);
+	toolkit->socket = gtk_socket_new();
+	if (toolkit->socket == NULL)
+	  return -1;
+	//D(bug("event mask socket: %d\n", gtk_widget_get_events(toolkit->socket)));
+	// Careful not to pass all events -> the expose event kills the plugin
+	//	gtk_widget_set_events(toolkit->socket, 0x0fffff);
+	//D(bug("event mask socket: %d\n", gtk_widget_get_events(toolkit->socket)));
+	gtk_widget_set_size_request (toolkit->socket, window->width, window->height);
+	gtk_container_add(GTK_CONTAINER(toolkit->container), toolkit->socket);
+	gtk_widget_show (toolkit->socket);
+	D(bug("create_window socket is: %x\n", gtk_socket_get_id((GtkSocket *)toolkit->socket)));
+	D(bug("can focus before parent: %d, container: %d, socket: %d\n", GTK_WIDGET_CAN_FOCUS(parent),
+	      GTK_WIDGET_CAN_FOCUS(toolkit->container), GTK_WIDGET_CAN_FOCUS(toolkit->socket)));
+	//	gtk_widget_set_can_focus(parent, TRUE);
+	//	gtk_widget_set_can_focus(toolkit->container, TRUE);
+	//	gtk_widget_set_can_focus(toolkit->socket, TRUE);
+	D(bug("can focus after parent: %d, container: %d, socket: %d\n", GTK_WIDGET_CAN_FOCUS(parent),
+	      GTK_WIDGET_CAN_FOCUS(toolkit->container), GTK_WIDGET_CAN_FOCUS(toolkit->socket)));
+	D(bug("widget state parent: %d, container: %d, socket: %d\n", GTK_WIDGET_STATE(parent),
+	      GTK_WIDGET_STATE(toolkit->container), GTK_WIDGET_STATE(toolkit->socket)));
+	D(bug("widget sensitive parent: %d, container: %d, socket: %d\n", GTK_WIDGET_IS_SENSITIVE(parent),
+	      GTK_WIDGET_IS_SENSITIVE(toolkit->container), GTK_WIDGET_IS_SENSITIVE(toolkit->socket)));
+
+	D(bug("create_window parent window=0x%lx, container=0x%lx, socket=0x%lx\n", (unsigned long)window->window, (unsigned long)GDK_WINDOW_XID(toolkit->container->window), (unsigned long)gtk_socket_get_id((GtkSocket *)toolkit->socket)));
+
+	window->window = (void *)gtk_socket_get_id(GTK_SOCKET(toolkit->socket));
+	plugin->toolkit_data = toolkit;
+#if USE_XEMBED_HACK
+	// don't let the browser kill our window out of NPP_Destroy() scope
+	g_signal_connect(toolkit->container, "delete-event",
+					 G_CALLBACK(gtk_true), NULL);
+#endif
+	// make sure we don't try to destroy the widget again in destroy_window()
+	g_signal_connect(toolkit->container, "destroy",
+					 G_CALLBACK(gtk_widget_destroyed), &toolkit->container);
+	// keep the socket as the plugin tries to destroy the widget itself
+	g_signal_connect(toolkit->socket, "plug_removed",
+					 G_CALLBACK(gtk_true), NULL);
+	return 0;
+  }
+ else
+      {
 	GtkData *toolkit = calloc(1, sizeof(*toolkit));
 	if (toolkit == NULL)
 	  return -1;
@@ -793,6 +936,7 @@ static int create_window(PluginInstance *plugin, NPWindow *window)
 	g_signal_connect(toolkit->socket, "plug_removed",
 					 G_CALLBACK(gtk_true), NULL);
 	return 0;
+  }
   }
 
   XtData *toolkit = calloc(1, sizeof(*toolkit));
@@ -845,7 +989,7 @@ static int update_window(PluginInstance *plugin, NPWindow *window)
   }
 
   if (window->ws_info == NULL) {
-	npw_printf("ERROR: no window attributes for window %p\n", window->window);
+    npw_printf("ERROR: no window attributes for window %p\n", (void *)window->window);
 	return -1;
   }
 
